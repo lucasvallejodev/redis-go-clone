@@ -27,6 +27,7 @@ func run() (err error) {
 
 	fmt.Println("Server is listening on port 6379")
 
+	errCh := make(chan error)
 	for {
 		fmt.Println("Waiting for client to connect")
 		conn, err := listener.Accept()
@@ -35,7 +36,9 @@ func run() (err error) {
 			os.Exit(1)
 		}
 
-		err = handleClient(conn)
+		go handleClient(conn, errCh)
+
+		err = <-errCh
 		if err != nil {
 			fmt.Println("Error handling client")
 			os.Exit(1)
@@ -43,7 +46,7 @@ func run() (err error) {
 	}
 }
 
-func handleClient(conn net.Conn) (err error) {
+func handleClient(conn net.Conn, channel chan error) (err error) {
 	response := []byte("+PONG\r\n")
 	fmt.Println("Client connected")
 	defer conn.Close()
@@ -56,7 +59,8 @@ func handleClient(conn net.Conn) (err error) {
 				fmt.Println("Client disconnected")
 				return nil
 			}
-			return err
+			channel <- err
+			return nil
 		}
 
 		fmt.Printf("Received %d bytes: %s\n", n, string(buf[:n]))
