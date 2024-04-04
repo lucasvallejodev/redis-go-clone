@@ -5,8 +5,6 @@ import (
 	"io"
 	"net"
 	"os"
-
-	"github.com/pkg/errors"
 )
 
 func main() {
@@ -21,39 +19,47 @@ func run() (err error) {
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 
 	if err != nil {
-		return errors.Wrap(err, "Failed to bind to port 6379")
+		fmt.Println("Failed to bind to port 6379")
+		os.Exit(1)
 	}
 
-	defer closeConn(listener, &err, "Close listener")
+	defer listener.Close()
 
 	fmt.Println("Server is listening on port 6379")
 
-	conn, err := listener.Accept()
-	if err != nil {
-		return errors.Wrap(err, "Error accepting connection")
+	for {
+		fmt.Println("Waiting for client to connect")
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection")
+			os.Exit(1)
+		}
+
+		err = handleClient(conn)
+		if err != nil {
+			fmt.Println("Error handling client")
+			os.Exit(1)
+		}
 	}
-
-	defer closeConn(conn, &err, "Close connection")
-
-	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
-	if err != nil {
-		return errors.Wrap(err, "Error reading from connection")
-	}
-
-	fmt.Printf("Received: %s\n", buf[:n])
-
-	_, err = conn.Write([]byte("+PONG\r\n"))
-	if err != nil {
-		return errors.Wrap(err, "Error writing to connection")
-	}
-
-	return nil
 }
 
-func closeConn(conn io.Closer, errp *error, msg string) {
-	err := conn.Close()
-	if errp != nil {
-		*errp = errors.Wrap(err, msg)
+func handleClient(conn net.Conn) (err error) {
+	response := []byte("+PONG\r\n")
+	fmt.Println("Client connected")
+	defer conn.Close()
+
+	for {
+		buf := make([]byte, 1024)
+		n, err := conn.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("Client disconnected")
+				return nil
+			}
+			return err
+		}
+
+		fmt.Printf("Received %d bytes: %s\n", n, string(buf[:n]))
+		conn.Write(response)
 	}
 }
