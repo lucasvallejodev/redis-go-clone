@@ -28,6 +28,9 @@ func run() (err error) {
 	fmt.Println("Server is listening on port 6379")
 
 	errCh := make(chan error)
+
+	go handleErrors(errCh)
+
 	for {
 		fmt.Println("Waiting for client to connect")
 		conn, err := listener.Accept()
@@ -37,12 +40,6 @@ func run() (err error) {
 		}
 
 		go handleClient(conn, errCh)
-
-		err = <-errCh
-		if err != nil {
-			fmt.Println("Error handling client")
-			os.Exit(1)
-		}
 	}
 }
 
@@ -65,5 +62,14 @@ func handleClient(conn net.Conn, channel chan error) (err error) {
 
 		fmt.Printf("Received %d bytes: %s\n", n, string(buf[:n]))
 		conn.Write(response)
+	}
+}
+
+func handleErrors(errCh <-chan error) {
+	for err := range errCh {
+		if err != nil {
+			fmt.Println("Error handling client:", err)
+			os.Exit(1)
+		}
 	}
 }
