@@ -1,59 +1,98 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"strconv"
-	"strings"
 )
 
-func getBulkSize(reader *bufio.Reader) (int, error) {
-	bulkSize, err := getReaderString(reader)
-	if err != nil {
-		return -1, err
-	}
-	size, err := strconv.Atoi(bulkSize)
-	if err != nil {
-		return -1, err
-	}
-	return size, nil
+const (
+	SimpleStringR = '+'
+	SimpleErrorR  = '-'
+	BulkStringR   = '$'
+	ArrayR        = '*'
+	CLRFLength    = 2
+)
+
+type Parser struct {
+	parsedInput []string
 }
 
-func getArgs(reader *bufio.Reader, bulkSize int) ([]string, error) {
-	var args []string
-	for i := 0; i < bulkSize; i++ {
-		size, err := getReaderString(reader)
-		if err != nil {
-			return []string{}, err
+func (p *Parser) parseEverythingUntilCRLF(text string) (string, string) {
+	result := ""
+	for _, r := range text {
+		if r == '\r' {
+			continue
+		} else if r == '\n' {
+			break
 		}
-		argSize, err := strconv.Atoi(size)
-		if err != nil {
-			return []string{}, fmt.Errorf("error: strconv for argsize %s", err)
-		}
-		arg, err := getReaderString(reader)
-		if err != nil {
-			return []string{}, err
-		}
-		/* Debug */
-		if len(arg) != argSize {
-			return []string{}, fmt.Errorf("error: size is different when parsing arguments")
-		}
-		args = append(args, arg)
+		result = result + string(r)
 	}
-	return args, nil
+
+	return result, text[len(result)+CLRFLength:]
 }
 
-func getReaderString(reader *bufio.Reader) (string, error) {
-	chunk, err := reader.ReadString('\n')
+func (p *Parser) parseArrayR(text string) ([]string, string, error) {
+	strNumber, rest := p.parseEverythingUntilCRLF(text)
+
+	numberOfItems, err := strconv.Atoi(strNumber)
 	if err != nil {
-		if err == io.EOF {
-			return "", nil
-		}
-		return "", err
+		return nil, "", err
 	}
-	trimmedChunk := strings.ToLower(strings.TrimFunc(chunk, func(r rune) bool {
-		return r == '$' || r == '\r' || r == '\n' || r == '*'
-	}))
-	return trimmedChunk, nil
+
+	var result []string
+	for i := 0; i < numberOfItems; i++ {
+		elemParsed, restNotParsed, err := p.parse(rest)
+		if err != nil {
+			return nil, "", err
+		}
+		result = append(result, elemParsed...)
+		rest = restNotParsed
+	}
+
+	return result, "", nil
+}
+
+func (p *Parser) parseBulkStringR(text string) ([]string, string, error) {
+	strNumber, rest := p.parseEverythingUntilCRLF(text)
+	numberBytes, err := strconv.Atoi(strNumber)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var result []byte
+	for i := 0; i < numberBytes; i++ {
+		result = append(result, rest[i])
+	}
+
+	return []string{string(result)}, rest[numberBytes+CLRFLength:], nil
+}
+
+func (p *Parser) parse(input string) ([]string, string, error) {
+	var result []string
+	var partialResult []string
+	var restNotParsed string
+	var err error
+	if len(input) == 0 {
+		return result, "", nil
+	}
+	switch input[0] {
+	case SimpleStringR:
+		fmt.Println("SimpleStringR")
+	case SimpleErrorR:
+		fmt.Println("SimpleErrorR")
+	case ArrayR:
+		partialResult, restNotParsed, err = p.parseArrayR(input[1:])
+	case BulkStringR:
+		partialResult, restNotParsed, err = p.parseBulkStringR(input[1:])
+	}
+	result = append(result, partialResult...)
+
+	return result, restNotParsed, err
+}
+
+func (p *Parser) parseInput(input string) error {
+	parsed, _, err := p.parse(input)
+	p.parsedInput = parsed
+
+	return err
 }

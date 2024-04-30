@@ -7,6 +7,9 @@ import (
 	"os"
 )
 
+var parser = Parser{}
+var redis = initRedis()
+
 func main() {
 	err := run()
 	if err != nil {
@@ -49,7 +52,7 @@ func handleClient(conn net.Conn, channel chan error) (err error) {
 
 	for {
 		buf := make([]byte, 1024)
-		n, err := conn.Read(buf)
+		_, err := conn.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("Client disconnected")
@@ -59,21 +62,22 @@ func handleClient(conn net.Conn, channel chan error) (err error) {
 			return nil
 		}
 
-		fmt.Printf("Received %d bytes: %s\n", n, string(buf[:n]))
-
-		cmd, err := NewCommand(buf)
+		err = parser.parseInput(string(buf[:]))
+		fmt.Println(parser.parsedInput)
 		if err != nil {
-			fmt.Println("Error when creating newCmd: ", err.Error())
-			return err
+			fmt.Println("Error parsing client's input: ", err.Error())
 		}
 
-		switch cmd.Args[0] {
-		default:
-			conn.Write([]byte("+OK\r\n"))
-		case "ping":
-			conn.Write([]byte("+PONG\r\n"))
-		case "echo":
-			conn.Write([]byte(fmt.Sprintf("+%s\r\n", cmd.Args[1])))
+		response, err := redis.executeCommand(parser.parsedInput)
+		fmt.Println("handleConnection: ", parser.parsedInput, redis.data)
+		if err != nil {
+			fmt.Println("Error executing client's input: ", err.Error())
+		}
+
+		_, err = conn.Write(response)
+		if err != nil {
+			fmt.Println("Error writing data: ", err.Error())
+			os.Exit(1)
 		}
 	}
 }
