@@ -44,7 +44,6 @@ func run() (err error) {
 }
 
 func handleClient(conn net.Conn, channel chan error) (err error) {
-	response := []byte("+PONG\r\n")
 	fmt.Println("Client connected")
 	defer conn.Close()
 
@@ -61,7 +60,21 @@ func handleClient(conn net.Conn, channel chan error) (err error) {
 		}
 
 		fmt.Printf("Received %d bytes: %s\n", n, string(buf[:n]))
-		conn.Write(response)
+
+		cmd, err := NewCommand(buf)
+		if err != nil {
+			fmt.Println("Error when creating newCmd: ", err.Error())
+			return err
+		}
+
+		switch cmd.Args[0] {
+		default:
+			conn.Write([]byte("+OK\r\n"))
+		case "ping":
+			conn.Write([]byte("+PONG\r\n"))
+		case "echo":
+			conn.Write([]byte(fmt.Sprintf("+%s\r\n", cmd.Args[1])))
+		}
 	}
 }
 
